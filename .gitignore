@@ -1,3 +1,10 @@
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # Python
 __pycache__/
 *.py[cod]
@@ -6,46 +13,54 @@ __pycache__/
 .Python
 *.egg
 *.egg-info/
-dist/
 build/
-eggs/
-parts/
-var/
+dist/
 sdist/
 develop-eggs/
 .installed.cfg
-lib/
-lib64/
+pip-wheel-metadata/
 
-# Virtual environments
+# Virtual envs
 venv/
 env/
 ENV/
 .venv/
 
-# Environment variables
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Environment files
 .env
+.env.*
 !.env.example
+!.env.local.example
 
-# Alembic
-alembic/versions/*.py
-!alembic/versions/.gitkeep
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-.DS_Store
+# Node / Next.js
+node_modules/
+.next/
+out/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
 # Logs
 *.log
 logs/
 
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-
-# Uploads
+# Local runtime artifacts
 uploads/
+backend/uploads/
+
+# Local databases / temporary files
+*.sqlite
+*.sqlite3
+*.db
+
+# Docker overrides/local files
+docker-compose.override.yml

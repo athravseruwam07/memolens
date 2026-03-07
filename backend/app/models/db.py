@@ -51,6 +51,22 @@ class PatientCaregiver(Base):
     caregiver = relationship("User")
 
 
+class CaregiverInvite(Base):
+    __tablename__ = "caregiver_invites"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False)
+    invited_email = Column(Text, nullable=False)
+    role = Column(Text, nullable=False, default="SECONDARY")
+    token_hash = Column(Text, nullable=False, unique=True)
+    invited_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    created_at = Column(TIMESTAMP(timezone=True), default=datetime.utcnow)
+    expires_at = Column(TIMESTAMP(timezone=True), nullable=False)
+    accepted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    accepted_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    revoked_at = Column(TIMESTAMP(timezone=True), nullable=True)
+
+
 class FamiliarPerson(Base):
     __tablename__ = "familiar_people"
 

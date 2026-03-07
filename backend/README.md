@@ -24,11 +24,11 @@ pip install -r requirements.txt
 ```bash
 cp .env.example .env
 # Edit .env with your Supabase credentials and secrets
+# Set FRONTEND_URL / FRONTEND_URLS to your deployed frontend domain(s)
 ```
 
 ### 5. Run database migrations
 ```bash
-alembic revision --autogenerate -m "initial"
 alembic upgrade head
 ```
 
@@ -43,12 +43,24 @@ celery -A app.workers.celery_app worker --loglevel=info
 celery -A app.workers.celery_app beat --loglevel=info
 ```
 
+### 8. Seed demo data
+```bash
+python -m scripts.seed_demo
+```
+This creates demo caregiver accounts, one patient, linked caregivers, people, reminders, notes, item states, and events.
+
 ## API Documentation
 
 Once running, visit:
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 - Health check: http://localhost:8000/health
+- Contract doc: `../docs/api.md`
+
+## Deployment
+
+For full deployment instructions (Docker Compose + hosted setup), see:
+- `../docs/deploy.md`
 
 ## Tech Stack
 

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_patient_access
 from app.models.db import User, DailyNote
 from app.models.schemas import DailyNoteCreate, DailyNoteOut, APIResponse
 
@@ -17,7 +17,7 @@ router = APIRouter(prefix="/patients/{patient_id}/daily-notes", tags=["notes"])
 async def list_notes(
     patient_id: UUID,
     date_filter: Optional[date] = Query(None, alias="date"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(DailyNote).where(DailyNote.patient_id == patient_id)
@@ -33,7 +33,7 @@ async def list_notes(
 async def create_note(
     patient_id: UUID,
     body: DailyNoteCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     note = DailyNote(

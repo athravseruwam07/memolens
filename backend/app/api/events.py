@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import ensure_patient_access, get_current_user, require_patient_access
 from app.models.db import User, Event
 from app.models.schemas import EventCreate, EventOut, APIResponse
 
@@ -18,6 +18,8 @@ async def create_event(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await ensure_patient_access(db=db, user=user, patient_id=body.patient_id)
+
     event = Event(
         patient_id=body.patient_id,
         type=body.type,
@@ -35,7 +37,7 @@ async def list_events(
     type: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     query = select(Event).where(Event.patient_id == patient_id)

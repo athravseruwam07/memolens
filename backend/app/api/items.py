@@ -4,7 +4,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_patient_access
 from app.models.db import User, ItemState
 from app.models.schemas import ItemStateOut, APIResponse
 
@@ -14,7 +14,7 @@ router = APIRouter(prefix="/patients/{patient_id}/item-states", tags=["items"])
 @router.get("/")
 async def list_item_states(
     patient_id: UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

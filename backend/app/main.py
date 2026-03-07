@@ -1,15 +1,21 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
-from app.config import FRONTEND_URL
+from app.config import FRONTEND_URL, FRONTEND_URLS, LOCAL_UPLOAD_DIR
 from app.api import auth, patients, people, events, items, reminders, notes, query, websocket
 
 app = FastAPI(title="MemoLens API", version="1.0.0")
 
+allowed_origins = [FRONTEND_URL, "http://localhost:3000", *FRONTEND_URLS]
+allowed_origins = list(dict.fromkeys([u for u in allowed_origins if u]))
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -28,6 +34,10 @@ app.include_router(query.router, prefix=prefix)
 
 # WebSocket (no prefix — mounted at root)
 app.include_router(websocket.router)
+
+# Local upload fallback serving (/uploads/*)
+Path(LOCAL_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=LOCAL_UPLOAD_DIR), name="uploads")
 
 
 @app.get("/health")

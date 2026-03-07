@@ -1,16 +1,17 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 
 from app.database import get_db
-from app.dependencies import get_current_user
+from app.dependencies import require_patient_access
 from app.models.db import User, FamiliarPerson
 from app.models.schemas import (
     FamiliarPersonCreate, FamiliarPersonUpdate, FamiliarPersonOut, APIResponse,
 )
 from app.services.face_service import generate_face_embedding
+from app.services.storage_service import upload_person_photo
 
 router = APIRouter(prefix="/patients/{patient_id}/people", tags=["people"])
 
@@ -18,7 +19,7 @@ router = APIRouter(prefix="/patients/{patient_id}/people", tags=["people"])
 @router.get("/")
 async def list_people(
     patient_id: UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -37,18 +38,25 @@ async def create_person(
     conversation_prompt: Optional[str] = Form(None),
     importance_level: int = Form(3),
     photos: list[UploadFile] = File(default=[]),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
+    person_id = uuid4()
     photo_urls = []
     embeddings = []
     for photo in photos:
         content = await photo.read()
-        # In production: upload to Supabase Storage, get URL
-        photo_urls.append(f"/uploads/{photo.filename}")
+        photo_url = await upload_person_photo(
+            patient_id=str(patient_id),
+            person_id=str(person_id),
+            filename=photo.filename,
+            content=content,
+        )
+        photo_urls.append(photo_url)
         embeddings.append(generate_face_embedding(content))
 
     person = FamiliarPerson(
+        id=person_id,
         patient_id=patient_id,
         name=name,
         relationship=relationship,
@@ -71,7 +79,7 @@ async def update_person(
     patient_id: UUID,
     pid: UUID,
     body: FamiliarPersonUpdate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -97,7 +105,7 @@ async def update_person(
 async def delete_person(
     patient_id: UUID,
     pid: UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -120,7 +128,7 @@ async def upload_photos(
     patient_id: UUID,
     pid: UUID,
     photos: list[UploadFile] = File(...),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -138,7 +146,13 @@ async def upload_photos(
 
     for photo in photos:
         content = await photo.read()
-        existing_photos.append(f"/uploads/{photo.filename}")
+        photo_url = await upload_person_photo(
+            patient_id=str(patient_id),
+            person_id=str(pid),
+            filename=photo.filename,
+            content=content,
+        )
+        existing_photos.append(photo_url)
         existing_embeddings.append(generate_face_embedding(content))
 
     person.photos = existing_photos

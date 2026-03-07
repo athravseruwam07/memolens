@@ -40,6 +40,36 @@ async def require_caregiver(
     return user
 
 
+async def ensure_patient_access(
+    db: AsyncSession,
+    user: User,
+    patient_id: UUID,
+) -> None:
+    # Allow access only if the user is linked to the patient as primary/secondary caregiver.
+    result = await db.execute(
+        select(PatientCaregiver).where(
+            PatientCaregiver.patient_id == patient_id,
+            PatientCaregiver.caregiver_id == user.id,
+        )
+    )
+    link = result.scalar_one_or_none()
+    if link is None:
+        raise HTTPException(status_code=403, detail="Patient access denied")
+
+
+class RequirePatientAccess:
+    """Dependency that checks the user has access to the given patient."""
+
+    async def __call__(
+        self,
+        patient_id: UUID,
+        user: User = Depends(get_current_user),
+        db: AsyncSession = Depends(get_db),
+    ) -> User:
+        await ensure_patient_access(db=db, user=user, patient_id=patient_id)
+        return user
+
+
 class RequirePrimaryCaregiver:
     """Dependency that checks the user is the PRIMARY caregiver of a given patient."""
 
@@ -63,3 +93,4 @@ class RequirePrimaryCaregiver:
 
 
 require_primary_caregiver = RequirePrimaryCaregiver()
+require_patient_access = RequirePatientAccess()

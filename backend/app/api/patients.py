@@ -4,7 +4,7 @@ from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.dependencies import get_current_user, require_caregiver, require_primary_caregiver
+from app.dependencies import require_caregiver, require_patient_access, require_primary_caregiver
 from app.models.db import User, Patient, PatientCaregiver
 from app.models.schemas import (
     PatientCreate, PatientUpdate, PatientOut, CaregiverLink, APIResponse,
@@ -45,7 +45,7 @@ async def create_patient(
 @router.get("/{patient_id}")
 async def get_patient(
     patient_id: UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(select(Patient).where(Patient.id == patient_id))
@@ -79,7 +79,7 @@ async def update_patient(
 @router.get("/{patient_id}/caregivers")
 async def list_caregivers(
     patient_id: UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(

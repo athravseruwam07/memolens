@@ -26,7 +26,23 @@ class LoginRequest(BaseModel):
 
 class InviteCaregiverRequest(BaseModel):
     patient_id: UUID
-    email: str
+    email: EmailStr
+
+class InviteCaregiverResponse(BaseModel):
+    message: str
+    invite_token: str
+    expires_at: datetime
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    name: Optional[str] = None
+    password: Optional[str] = None
+
+class AcceptInviteResponse(BaseModel):
+    message: str
+    patient_id: UUID
+    user: UserOut
+    token: str
 
 class UserOut(BaseModel):
     id: UUID

@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID, uuid4
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy import select
@@ -14,6 +15,10 @@ from app.services.face_service import generate_face_embedding
 from app.services.storage_service import upload_person_photo
 
 router = APIRouter(prefix="/patients/{patient_id}/people", tags=["people"])
+
+
+def _is_zero_embedding(embedding: list[float]) -> bool:
+    return not embedding or all(abs(v) < 1e-12 for v in embedding)
 
 
 @router.get("/")
@@ -41,19 +46,33 @@ async def create_person(
     user: User = Depends(require_patient_access),
     db: AsyncSession = Depends(get_db),
 ):
+    if not photos:
+        raise HTTPException(status_code=400, detail="At least one face photo is required")
+
     person_id = uuid4()
     photo_urls = []
     embeddings = []
+
+    encoded_photos: list[tuple[str, bytes, list[float]]] = []
     for photo in photos:
         content = await photo.read()
+        embedding = await asyncio.to_thread(generate_face_embedding, content)
+        if _is_zero_embedding(embedding):
+            raise HTTPException(
+                status_code=400,
+                detail=f"No face detected in photo: {photo.filename or 'unnamed-file'}",
+            )
+        encoded_photos.append((photo.filename or "photo.jpg", content, embedding))
+
+    for filename, content, embedding in encoded_photos:
         photo_url = await upload_person_photo(
             patient_id=str(patient_id),
             person_id=str(person_id),
-            filename=photo.filename,
+            filename=filename,
             content=content,
         )
         photo_urls.append(photo_url)
-        embeddings.append(generate_face_embedding(content))
+        embeddings.append(embedding)
 
     person = FamiliarPerson(
         id=person_id,
@@ -144,16 +163,26 @@ async def upload_photos(
     existing_photos = list(person.photos or [])
     existing_embeddings = list(person.face_embeddings or [])
 
+    encoded_photos: list[tuple[str, bytes, list[float]]] = []
     for photo in photos:
         content = await photo.read()
+        embedding = await asyncio.to_thread(generate_face_embedding, content)
+        if _is_zero_embedding(embedding):
+            raise HTTPException(
+                status_code=400,
+                detail=f"No face detected in photo: {photo.filename or 'unnamed-file'}",
+            )
+        encoded_photos.append((photo.filename or "photo.jpg", content, embedding))
+
+    for filename, content, embedding in encoded_photos:
         photo_url = await upload_person_photo(
             patient_id=str(patient_id),
             person_id=str(pid),
-            filename=photo.filename,
+            filename=filename,
             content=content,
         )
         existing_photos.append(photo_url)
-        existing_embeddings.append(generate_face_embedding(content))
+        existing_embeddings.append(embedding)
 
     person.photos = existing_photos
     person.face_embeddings = existing_embeddings

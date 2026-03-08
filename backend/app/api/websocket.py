@@ -64,12 +64,10 @@ def _decode_token_subject(token: str) -> str | None:
 @router.websocket("/ws/stream/{patient_id}")
 async def websocket_stream(websocket: WebSocket, patient_id: UUID):
     await websocket.accept()
-    print(f"[WS] Pi connected for patient {patient_id}")
 
     try:
         while True:
             data = await websocket.receive_text()
-            print(f"[WS] Received frame for patient {patient_id} ({len(data)} bytes)")
 
             try:
                 frame_bytes, payload = _parse_stream_payload(data)
@@ -90,7 +88,7 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                     continue
 
                 # Generate embedding from frame
-                frame_embedding = generate_face_embedding(frame_bytes)
+                frame_embedding = await asyncio.to_thread(generate_face_embedding, frame_bytes)
 
                 # Load known people for this patient
                 result = await db.execute(
@@ -115,7 +113,7 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                 responses = []
 
                 if matched:
-                    print(f"[WS] Face recognized: {matched['name']} for patient {patient_id}")
+                    print(f"{matched['name']} person detected")
                     face_result = {
                         "type": "person",
                         "name": matched["name"],
@@ -132,6 +130,9 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                         payload={"person_id": matched["id"], "name": matched["name"]},
                     )
                     db.add(event)
+                else:
+                    print("person not detected")
+                    responses.append({"type": "no_match"})
 
                 # Process item detections from Pi payload and keep latest item state.
                 tracked_items = patient.tracked_items or []
@@ -201,7 +202,6 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                     near_exit=near_exit,
                 )
                 for r in triggered:
-                    print(f"[WS] Reminder triggered: {r.message} for patient {patient_id}")
                     responses.append({
                         "type": "reminder",
                         "message": r.message,
@@ -227,7 +227,7 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                     await websocket.send_json({"type": "no_match"})
 
     except WebSocketDisconnect:
-        print(f"[WS] Pi disconnected for patient {patient_id}")
+        return
 
 
 @router.websocket("/ws/events/{patient_id}")

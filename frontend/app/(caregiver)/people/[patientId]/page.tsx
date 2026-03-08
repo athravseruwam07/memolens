@@ -10,6 +10,7 @@ export default function PeoplePage({ params }: { params: { patientId: string } }
   const [people, setPeople] = useState<FamiliarPerson[]>([]);
   const [name, setName] = useState("");
   const [relationship, setRelationship] = useState("");
+  const [photos, setPhotos] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   async function load() {
@@ -34,6 +35,13 @@ export default function PeoplePage({ params }: { params: { patientId: string } }
     const fd = new FormData();
     fd.append("name", name);
     if (relationship) fd.append("relationship", relationship);
+    if (photos.length === 0) {
+      setError("Please upload at least one face photo.");
+      return;
+    }
+    for (const photo of photos) {
+      fd.append("photos", photo);
+    }
 
     const res = await apiPost<FamiliarPerson>(`/patients/${params.patientId}/people/`, fd, token);
     if (res.error) {
@@ -42,6 +50,8 @@ export default function PeoplePage({ params }: { params: { patientId: string } }
     }
     setName("");
     setRelationship("");
+    setPhotos([]);
+    setError(null);
     await load();
   }
 
@@ -51,6 +61,14 @@ export default function PeoplePage({ params }: { params: { patientId: string } }
       <form className="grid" style={{ maxWidth: 520 }} onSubmit={addPerson}>
         <input className="input" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required />
         <input className="input" placeholder="Relationship" value={relationship} onChange={(e) => setRelationship(e.target.value)} />
+        <input
+          className="input"
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => setPhotos(Array.from(e.target.files || []))}
+          required
+        />
         <button className="btn" type="submit">Add</button>
       </form>
 

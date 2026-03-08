@@ -11,3 +11,6 @@ redis
 httpx
 python-dotenv
 alembic
+email-validator
+face_recognition
+Pillow

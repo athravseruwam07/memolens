@@ -1,33 +1,125 @@
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime
 from typing import Any
 
+logger = logging.getLogger(__name__)
 
+# Detection mode: "zeroshot" uses YOLO-World, "coco" uses standard YOLOv8
+# Set via environment variable for easy switching
+DETECTION_MODE = os.environ.get("DETECTION_MODE", "zeroshot").lower()
+
+# Maps YOLO COCO class names to normalized item names
+# This ensures consistent naming in the database
 YOLO_LABEL_MAP = {
-    "mouse": "computer mouse",
-    "computer mouse": "computer mouse",
-    "cell phone": "phone",
-    "mobile phone": "phone",
-    "wallet": "wallet",
-    "purse": "wallet",
-    "handbag": "wallet",
-    "keys": "keys",
-    "eyeglasses": "glasses",
-    "glasses": "glasses",
+    # === COCO Classes (keep as-is or normalize) ===
+    "person": "person",
+    "bicycle": "bicycle",
+    "car": "car",
+    "motorcycle": "motorcycle",
+    "airplane": "airplane",
+    "bus": "bus",
+    "train": "train",
+    "truck": "truck",
+    "boat": "boat",
+    "traffic light": "traffic light",
+    "fire hydrant": "fire hydrant",
+    "stop sign": "stop sign",
+    "parking meter": "parking meter",
+    "bench": "bench",
+    "bird": "bird",
+    "cat": "cat",
+    "dog": "dog",
+    "horse": "horse",
+    "sheep": "sheep",
+    "cow": "cow",
+    "elephant": "elephant",
+    "bear": "bear",
+    "zebra": "zebra",
+    "giraffe": "giraffe",
+    "backpack": "backpack",
+    "umbrella": "umbrella",
+    "handbag": "handbag",
+    "tie": "tie",
+    "suitcase": "suitcase",
+    "frisbee": "frisbee",
+    "skis": "skis",
+    "snowboard": "snowboard",
+    "sports ball": "ball",
+    "kite": "kite",
+    "baseball bat": "baseball bat",
+    "baseball glove": "baseball glove",
+    "skateboard": "skateboard",
+    "surfboard": "surfboard",
+    "tennis racket": "tennis racket",
+    "bottle": "bottle",
+    "wine glass": "wine glass",
+    "cup": "cup",
+    "fork": "fork",
+    "knife": "knife",
+    "spoon": "spoon",
+    "bowl": "bowl",
+    "banana": "banana",
+    "apple": "apple",
+    "sandwich": "sandwich",
+    "orange": "orange",
+    "broccoli": "broccoli",
+    "carrot": "carrot",
+    "hot dog": "hot dog",
+    "pizza": "pizza",
+    "donut": "donut",
+    "cake": "cake",
+    "chair": "chair",
+    "couch": "couch",
+    "potted plant": "plant",
+    "bed": "bed",
+    "dining table": "table",
+    "toilet": "toilet",
+    "tv": "tv",
     "laptop": "laptop",
-    "tv remote": "remote",
-    "remote control": "remote",
-    "shoe": "shoes",
-    "sneaker": "shoes",
-    "boot": "shoes",
-    "sandals": "shoes",
-    "keychain": "keys",
-    "house keys": "keys",
-    "medicine": "medication",
-    "medication": "medication",
-    "pill bottle": "medication",
-    "medicine bottle": "medication",
+    "mouse": "mouse",
+    "remote": "remote",
+    "keyboard": "keyboard",
+    "cell phone": "phone",
+    "microwave": "microwave",
+    "oven": "oven",
+    "toaster": "toaster",
+    "sink": "sink",
+    "refrigerator": "refrigerator",
+    "book": "book",
+    "clock": "clock",
+    "vase": "vase",
+    "scissors": "scissors",
+    "teddy bear": "teddy bear",
+    "hair drier": "hair dryer",
+    "toothbrush": "toothbrush",
+    
+    # === Synonyms/Variations (normalize to COCO terms) ===
+    "mobile phone": "phone",
+    "cellphone": "phone",
+    "smartphone": "phone",
+    "mobile": "phone",
+    "iphone": "phone",
+    "android": "phone",
+    
+    "computer mouse": "mouse",
+    "notebook": "laptop",
+    
+    "sofa": "couch",
+    "television": "tv",
+    "fridge": "refrigerator",
+    "table": "table",
+    "desk": "table",
+    
+    "mug": "cup",
+    "glass": "cup",
+    "wine glass": "cup",
+    "water bottle": "bottle",
+    
+    "plant": "plant",
+    "hairdryer": "hair dryer",
 }
 ROOM_KEYS = ("room", "room_label", "location")
 ITEM_WRITE_COOLDOWN_SECONDS = 30
@@ -78,8 +170,45 @@ def detect_items_from_frame(
     tracked_items: list[str] | None,
 ) -> list[dict[str, Any]]:
     """
-    Optional local YOLO detection path.
+    Detect items from a video frame using object detection.
+    
+    Uses YOLO-World (zero-shot) by default for detecting ANY object,
+    or falls back to standard YOLOv8 COCO classes if unavailable.
+    
+    Set DETECTION_MODE=coco to force COCO-only detection.
+    
     Returns [] if required CV dependencies are unavailable.
+    """
+    # Try zero-shot detection first (if enabled)
+    if DETECTION_MODE == "zeroshot":
+        try:
+            from app.services.zeroshot_detector import detect_items_zeroshot
+            result = detect_items_zeroshot(frame_bytes, tracked_items)
+            if result:
+                logger.debug(f"Zero-shot detected: {[d['item_name'] for d in result]}")
+                return result
+            # If zero-shot returned empty but didn't error, that's fine - no objects detected
+            # But also try COCO as it might catch something
+        except ImportError:
+            logger.info("Zero-shot detector not available, using COCO detection")
+        except Exception as e:
+            logger.warning(f"Zero-shot detection failed, falling back to COCO: {e}")
+    
+    # Fallback to standard YOLO COCO detection
+    try:
+        return _detect_items_coco(frame_bytes, tracked_items)
+    except Exception as e:
+        logger.error(f"COCO detection also failed: {e}")
+        return []
+
+
+def _detect_items_coco(
+    frame_bytes: bytes,
+    tracked_items: list[str] | None,
+) -> list[dict[str, Any]]:
+    """
+    Standard YOLOv8 COCO detection (80 fixed classes).
+    This is the fallback/legacy detection method.
     """
     model = _load_yolo_model()
     if model is None:
@@ -172,18 +301,23 @@ def extract_item_detections(
 def resolve_item_room(
     detection: dict[str, Any],
     payload: dict[str, Any] | None,
+    scene_room: str | None = None,
 ) -> str | None:
     """
     Resolve room with precedence:
     1) detection-level room keys
     2) payload-level room keys
-    3) None
+    3) scene-detected room (from visual classification)
+    4) None
     """
     for source in (detection, payload or {}):
         for key in ROOM_KEYS:
             room = _normalize_room_name(source.get(key))
             if room:
                 return room
+    # Fallback to scene-detected room
+    if scene_room:
+        return _normalize_room_name(scene_room)
     return None
 
 

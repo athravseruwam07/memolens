@@ -13,6 +13,21 @@ from app.models.schemas import (
 router = APIRouter(prefix="/patients", tags=["patients"])
 
 
+@router.get("/")
+async def list_my_patients(
+    user: User = Depends(require_caregiver),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all patients the current caregiver has access to."""
+    result = await db.execute(
+        select(Patient)
+        .join(PatientCaregiver, Patient.id == PatientCaregiver.patient_id)
+        .where(PatientCaregiver.caregiver_id == user.id)
+    )
+    patients = result.scalars().all()
+    return APIResponse(data=[PatientOut.model_validate(p).model_dump() for p in patients])
+
+
 @router.post("/")
 async def create_patient(
     body: PatientCreate,

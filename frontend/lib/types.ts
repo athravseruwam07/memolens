@@ -88,3 +88,11 @@ export type QueryResult = {
   answer_type: string;
   results: unknown;
 };
+
+export type VoiceQueryResponse = {
+  type: string;
+  message: string;
+  results?: unknown;
+};
+
+export type VoiceState = "idle" | "listening" | "processing" | "speaking" | "error";

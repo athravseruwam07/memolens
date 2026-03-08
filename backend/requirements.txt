@@ -14,3 +14,7 @@ alembic
 email-validator
 numpy
 Pillow
+torch
+torchvision
+ultralytics>=8.1.0
+opencv-python-headless

@@ -21,9 +21,10 @@ from app.services.object_service import (
     resolve_item_room,
     should_write_item_update,
 )
-from app.services.reminder_service import get_triggered_reminders
-from app.services.reminder_service import get_triggered_daily_note_reminders
+from app.services.reminder_service import get_triggered_reminders, get_triggered_daily_note_reminders
+from app.services.scene_service import classify_scene
 from app.services.storage_service import StorageError, upload_item_snapshot
+from app.services.voice_query import build_person_announcement, build_reminder_announcement
 
 router = APIRouter()
 STREAM_RUNTIME_REFRESH_SECONDS = 5.0
@@ -139,8 +140,23 @@ async def _process_items_pipeline(
         payload_detections = extract_item_detections(payload=payload, tracked_items=tracked_items)
         cv_detections = await asyncio.to_thread(detect_items_from_frame, frame_bytes, tracked_items)
         item_detections = merge_detections(payload_detections, cv_detections)
+        
+        # Debug logging for detections
+        if cv_detections:
+            print(f"[DETECTION] CV detected: {[d['item_name'] for d in cv_detections]}")
+        if item_detections:
+            print(f"[DETECTION] Total items: {[d['item_name'] for d in item_detections]}")
 
-        current_room = payload.get("room") or payload.get("room_label") or payload.get("location")
+        # Scene/room classification from frame
+        scene_room, scene_confidence = await asyncio.to_thread(classify_scene, frame_bytes)
+        
+        # Use payload room first, fall back to scene-detected room
+        current_room = (
+            payload.get("room") 
+            or payload.get("room_label") 
+            or payload.get("location")
+            or scene_room
+        )
         near_exit = bool(payload.get("near_exit", False))
         detected_items = {det["item_name"] for det in item_detections if det.get("item_name")}
 
@@ -165,7 +181,8 @@ async def _process_items_pipeline(
                 if not item_name:
                     continue
 
-                resolved_room = resolve_item_room(det, payload)
+                # Use scene-detected room as fallback if no room in detection/payload
+                resolved_room = resolve_item_room(det, payload, scene_room)
                 confidence = det.get("confidence")
                 if isinstance(confidence, (int, float)):
                     confidence = float(confidence)
@@ -240,7 +257,12 @@ async def _process_items_pipeline(
                 near_exit=near_exit,
             )
             for reminder in triggered:
-                responses.append({"type": "reminder", "message": reminder.message})
+                voice_message = build_reminder_announcement(reminder.message)
+                responses.append({
+                    "type": "reminder",
+                    "message": reminder.message,
+                    "voice_message": voice_message,
+                })
                 db.add(
                     Event(
                         patient_id=patient_id,
@@ -276,7 +298,10 @@ async def _process_items_pipeline(
 
         for resp in responses:
             await _send_json_locked(websocket, send_lock, resp)
-    except Exception:
+    except Exception as e:
+        print(f"[ERROR] Item pipeline failed: {e}")
+        import traceback
+        traceback.print_exc()
         return
 
 
@@ -370,6 +395,13 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
 
             if matched:
                 print(f"{matched['name']} person detected")
+
+                voice_message = build_person_announcement(
+                    name=matched["name"],
+                    relationship=matched.get("relationship"),
+                    conversation_prompt=matched.get("conversation_prompt"),
+                )
+
                 await _send_json_locked(
                     websocket,
                     send_lock,
@@ -379,6 +411,7 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                         "relationship": matched.get("relationship"),
                         "notes": matched.get("notes"),
                         "conversation_prompt": matched.get("conversation_prompt"),
+                        "voice_message": voice_message,
                     },
                 )
                 asyncio.create_task(
@@ -389,10 +422,10 @@ async def websocket_stream(websocket: WebSocket, patient_id: UUID):
                     )
                 )
             else:
-                print("person not detected")
                 await _send_json_locked(websocket, send_lock, {"type": "no_match"})
 
             if item_task is None or item_task.done():
+                print(f"[DEBUG] Starting item detection, tracked_items={tracked_items_cache}")
                 item_task = asyncio.create_task(
                     _process_items_pipeline(
                         websocket=websocket,

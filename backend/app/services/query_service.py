@@ -3,7 +3,7 @@ Memory query logic.
 Parses a natural-language question and returns structured results from the database.
 """
 
-from datetime import date
+from datetime import date, datetime, time, timezone
 from uuid import UUID
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,8 +11,68 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.db import ItemState, Event, DailyNote, Reminder
 
 
+MEDICATION_KEYWORDS = {"medication", "medicine", "pills", "pill", "meds"}
+
+
+def _normalize(q: str) -> str:
+    return q.strip().lower()
+
+
+def _is_medication_adherence_question(q: str) -> bool:
+    return (
+        any(k in q for k in MEDICATION_KEYWORDS)
+        and any(p in q for p in ["did i take", "have i taken", "took", "take my"])
+    )
+
+
+def _is_medication_general_question(q: str) -> bool:
+    return any(k in q for k in MEDICATION_KEYWORDS)
+
+
+def _start_of_today_utc(hour: int = 9, minute: int = 0) -> datetime:
+    now = datetime.now(timezone.utc)
+    return datetime.combine(now.date(), time(hour=hour, minute=minute), tzinfo=timezone.utc)
+
+
 async def process_query(db: AsyncSession, patient_id: UUID, question: str) -> dict:
-    q = question.lower()
+    q = _normalize(question)
+
+    # Medication adherence: "Did I take my medication?"
+    if _is_medication_adherence_question(q):
+        cutoff = _start_of_today_utc(9, 0)
+        med_item_seen = await db.execute(
+            select(Event)
+            .where(
+                Event.patient_id == patient_id,
+                Event.type == "item_seen",
+                Event.occurred_at >= cutoff,
+            )
+            .order_by(desc(Event.occurred_at))
+            .limit(50)
+        )
+        med_hits = []
+        for event in med_item_seen.scalars().all():
+            payload = event.payload or {}
+            item_name = str(payload.get("item_name", "")).lower()
+            if any(k in item_name for k in MEDICATION_KEYWORDS):
+                med_hits.append(event)
+
+        latest = med_hits[0] if med_hits else None
+        taken = latest is not None
+        return {
+            "answer_type": "medication_adherence",
+            "results": {
+                "taken": taken,
+                "checked_after": cutoff.isoformat(),
+                "last_medication_item_seen_at": latest.occurred_at.isoformat() if latest else None,
+                "evidence": latest.payload if latest else None,
+                "message": (
+                    "It looks like your medication was handled today."
+                    if taken
+                    else "I can't confirm medication was handled today after 9:00 AM."
+                ),
+            },
+        }
 
     # Item lookup: keys, phone, wallet, etc.
     item_keywords = [
@@ -65,8 +125,8 @@ async def process_query(db: AsyncSession, patient_id: UUID, question: str) -> di
             "results": event.payload if event else None,
         }
 
-    # Medication check
-    if any(kw in q for kw in ["medication", "medicine", "pills"]):
+    # Medication lookup (general)
+    if _is_medication_general_question(q):
         item_result = await db.execute(
             select(ItemState).where(
                 ItemState.patient_id == patient_id,

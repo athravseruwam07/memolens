@@ -5,14 +5,14 @@ Checks active reminders against current context and returns triggered ones.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 
-from app.models.db import Event, Reminder
+from app.models.db import DailyNote, Event, Reminder
 
 
 def _parse_int(value: Any, default: int) -> int:
@@ -123,6 +123,35 @@ async def _was_recently_triggered(
     return False
 
 
+async def _was_note_recently_triggered(
+    db: AsyncSession,
+    patient_id: UUID,
+    note_id: UUID,
+    cooldown_seconds: int,
+) -> bool:
+    if cooldown_seconds <= 0:
+        return False
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=cooldown_seconds)
+    result = await db.execute(
+        select(Event)
+        .where(
+            Event.patient_id == patient_id,
+            Event.type == "reminder_triggered",
+            Event.occurred_at >= cutoff,
+        )
+        .order_by(desc(Event.occurred_at))
+        .limit(200)
+    )
+    for event in result.scalars().all():
+        payload = event.payload or {}
+        if (
+            _normalize_text(payload.get("trigger_type")) == "note"
+            and _normalize_text(payload.get("note_id")) == _normalize_text(note_id)
+        ):
+            return True
+    return False
+
+
 async def get_triggered_reminders(
     db: AsyncSession,
     patient_id: UUID,
@@ -165,6 +194,32 @@ async def get_triggered_reminders(
             continue
 
         triggered.append(reminder)
+
+    return triggered
+
+
+async def get_triggered_daily_note_reminders(
+    db: AsyncSession,
+    patient_id: UUID,
+    *,
+    cooldown_seconds: int = 1800,
+) -> list[DailyNote]:
+    """
+    Return today's daily notes that have not recently been surfaced as reminders.
+    """
+    result = await db.execute(
+        select(DailyNote).where(
+            DailyNote.patient_id == patient_id,
+            DailyNote.note_date == date.today(),
+        )
+    )
+    notes = result.scalars().all()
+    triggered: list[DailyNote] = []
+
+    for note in notes:
+        if await _was_note_recently_triggered(db, patient_id, note.id, cooldown_seconds):
+            continue
+        triggered.append(note)
 
     return triggered
 

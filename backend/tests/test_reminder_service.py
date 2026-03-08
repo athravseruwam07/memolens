@@ -3,7 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from app.models.db import Reminder
+from datetime import date
+
+from app.models.db import DailyNote, Reminder
 from app.services import reminder_service
 
 
@@ -19,10 +21,14 @@ class _FakeResult:
 
 
 class _FakeDB:
-    def __init__(self, reminders):
+    def __init__(self, reminders, notes=None):
         self._reminders = reminders
+        self._notes = notes or []
 
-    async def execute(self, _stmt):
+    async def execute(self, stmt):
+        sql = str(stmt)
+        if "daily_notes" in sql:
+            return _FakeResult(self._notes)
         return _FakeResult(self._reminders)
 
 
@@ -39,6 +45,10 @@ def _mk_reminder(r_type: str, trigger_meta: dict):
 
 
 async def _never_recently_triggered(*_args, **_kwargs):
+    return False
+
+
+async def _never_recently_note_triggered(*_args, **_kwargs):
     return False
 
 
@@ -102,3 +112,27 @@ async def test_time_reminder_triggers_for_current_hhmm(monkeypatch):
         patient_id=uuid4(),
     )
     assert len(out) == 1
+
+
+@pytest.mark.asyncio
+async def test_daily_note_reminders_trigger(monkeypatch):
+    note = DailyNote(
+        id=uuid4(),
+        patient_id=uuid4(),
+        note_date=date.today(),
+        content="Sarah is visiting at noon.",
+    )
+    db = _FakeDB(reminders=[], notes=[note])
+
+    monkeypatch.setattr(
+        reminder_service,
+        "_was_note_recently_triggered",
+        _never_recently_note_triggered,
+    )
+
+    out = await reminder_service.get_triggered_daily_note_reminders(
+        db,
+        patient_id=uuid4(),
+    )
+    assert len(out) == 1
+    assert out[0].content == "Sarah is visiting at noon."

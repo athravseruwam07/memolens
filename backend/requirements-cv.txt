@@ -1,0 +1,3 @@
+# Optional CV dependencies (install only if you want local native face-recognition stack)
+-r requirements.txt
+face_recognition

@@ -22,6 +22,7 @@ from app.services.object_service import (
     should_write_item_update,
 )
 from app.services.reminder_service import get_triggered_reminders
+from app.services.reminder_service import get_triggered_daily_note_reminders
 from app.services.storage_service import StorageError, upload_item_snapshot
 
 router = APIRouter()
@@ -248,6 +249,23 @@ async def _process_items_pipeline(
                             "reminder_id": str(reminder.id),
                             "message": reminder.message,
                             "trigger_type": reminder.type,
+                        },
+                    )
+                )
+                has_writes = True
+
+            # Surface caregiver daily notes as contextual reminders with cooldown.
+            note_reminders = await get_triggered_daily_note_reminders(db, patient_id)
+            for note in note_reminders:
+                responses.append({"type": "reminder", "message": note.content})
+                db.add(
+                    Event(
+                        patient_id=patient_id,
+                        type="reminder_triggered",
+                        payload={
+                            "note_id": str(note.id),
+                            "message": note.content,
+                            "trigger_type": "note",
                         },
                     )
                 )

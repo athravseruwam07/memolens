@@ -12,5 +12,5 @@ httpx
 python-dotenv
 alembic
 email-validator
-face_recognition
+numpy
 Pillow

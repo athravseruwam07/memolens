@@ -51,3 +51,33 @@ Services:
   cd backend
   python -m scripts.seed_demo
   ```
+
+## Automated Validation Commands
+
+Run from repo root.
+
+### 1) Final backend deployment checks (env + migrations + health)
+```bash
+cd backend
+python -m scripts.deploy_check --backend-url https://<your-backend-domain>
+```
+
+If running outside backend directory, set env vars first and use:
+```bash
+python -m backend.scripts.deploy_check --backend-url https://<your-backend-domain>
+```
+
+### 2) Full end-to-end smoke test (deployed env)
+```bash
+cd backend
+python -m scripts.smoke_e2e --base-url https://<your-backend-domain>
+```
+
+This script verifies:
+- caregiver register/login flow
+- patient creation
+- note creation
+- Pi stream ingestion via `/ws/stream/{patient_id}`
+- live event feed via `/ws/events/{patient_id}`
+- item state updates
+- memory query response for medication adherence

@@ -20,6 +20,12 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
+### 3.1 (Optional) Install native CV extras
+Only needed if you want local `face_recognition`/`dlib` on backend machine:
+```bash
+pip install -r requirements-cv.txt
+```
+
 ### 4. Configure environment
 ```bash
 cp .env.example .env
@@ -48,6 +54,14 @@ celery -A app.workers.celery_app beat --loglevel=info
 python -m scripts.seed_demo
 ```
 This creates demo caregiver accounts, one patient, linked caregivers, people, reminders, notes, item states, and events.
+
+### 9. Rehearse the 3-minute demo flow (Step 17)
+Use the patient ID printed by the seed script:
+```bash
+python -m scripts.rehearse_demo --base-url http://localhost:8000 --patient-id <PATIENT_ID>
+```
+Detailed speaking flow and fallback path:
+- `../docs/demo_rehearsal.md`
 
 ## API Documentation
 

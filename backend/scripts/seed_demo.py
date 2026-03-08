@@ -72,7 +72,7 @@ async def _ensure_caregiver_link(db: AsyncSession, *, patient_id, caregiver_id, 
     )
 
 
-async def _seed_people(db: AsyncSession, *, patient_id, created_by) -> None:
+async def _seed_people(db: AsyncSession, *, patient_id, created_by) -> dict[str, str]:
     demos = [
         {
             "name": "Sarah",
@@ -88,8 +88,16 @@ async def _seed_people(db: AsyncSession, *, patient_id, created_by) -> None:
             "conversation_prompt": "You have a checkup next week.",
             "importance_level": 4,
         },
+        {
+            "name": "Mike",
+            "relationship": "neighbor",
+            "notes": "Helps with groceries on Fridays.",
+            "conversation_prompt": "Ask Mike about the garden.",
+            "importance_level": 3,
+        },
     ]
 
+    people_by_name: dict[str, str] = {}
     for person_data in demos:
         result = await db.execute(
             select(FamiliarPerson).where(
@@ -97,19 +105,24 @@ async def _seed_people(db: AsyncSession, *, patient_id, created_by) -> None:
                 FamiliarPerson.name == person_data["name"],
             )
         )
-        if result.scalar_one_or_none():
+        person = result.scalar_one_or_none()
+        if person:
+            people_by_name[person.name.lower()] = str(person.id)
             continue
 
-        db.add(
-            FamiliarPerson(
-                id=uuid4(),
-                patient_id=patient_id,
-                photos=[],
-                face_embeddings=[],
-                created_by=created_by,
-                **person_data,
-            )
+        person = FamiliarPerson(
+            id=uuid4(),
+            patient_id=patient_id,
+            photos=[],
+            face_embeddings=[],
+            created_by=created_by,
+            **person_data,
         )
+        db.add(person)
+        await db.flush()
+        people_by_name[person.name.lower()] = str(person.id)
+
+    return people_by_name
 
 
 async def _seed_items(db: AsyncSession, *, patient_id) -> None:
@@ -145,16 +158,25 @@ async def _seed_items(db: AsyncSession, *, patient_id) -> None:
         )
 
 
-async def _seed_reminders(db: AsyncSession, *, patient_id, created_by) -> None:
+async def _seed_reminders(
+    db: AsyncSession,
+    *,
+    patient_id,
+    created_by,
+    people_by_name: dict[str, str],
+) -> None:
     now_hhmm = datetime.now(timezone.utc).strftime("%H:%M")
+    sarah_id = people_by_name.get("sarah")
     demos = [
         ("time", {"time": now_hhmm, "cooldown_seconds": 60}, "Take your medication now."),
-        ("person", {"person_id": "demo-sarah", "cooldown_seconds": 300}, "This is Sarah, your daughter."),
+        ("person", {"person_id": sarah_id, "cooldown_seconds": 300}, "This is Sarah, your daughter."),
         ("location", {"room": "kitchen", "cooldown_seconds": 300}, "You are in the kitchen. Have some water."),
         ("object", {"item": "keys", "mode": "missing_before_exit", "cooldown_seconds": 300}, "Remember your keys before leaving."),
     ]
 
     for rtype, trigger_meta, message in demos:
+        if rtype == "person" and not trigger_meta.get("person_id"):
+            continue
         result = await db.execute(
             select(Reminder).where(
                 Reminder.patient_id == patient_id,
@@ -177,7 +199,13 @@ async def _seed_reminders(db: AsyncSession, *, patient_id, created_by) -> None:
         )
 
 
-async def _seed_notes_and_events(db: AsyncSession, *, patient_id, created_by) -> None:
+async def _seed_notes_and_events(
+    db: AsyncSession,
+    *,
+    patient_id,
+    created_by,
+    people_by_name: dict[str, str],
+) -> None:
     today = date.today()
     note_text = "Sarah is visiting for lunch at noon."
 
@@ -198,12 +226,15 @@ async def _seed_notes_and_events(db: AsyncSession, *, patient_id, created_by) ->
             )
         )
 
+    sarah_id = people_by_name.get("sarah")
     event_defs = [
         ("item_seen", {"item_name": "keys", "room": "kitchen", "confidence": 0.94}),
-        ("face_recognized", {"person_id": "demo-sarah", "name": "Sarah"}),
+        ("face_recognized", {"person_id": sarah_id, "name": "Sarah"}),
         ("reminder_triggered", {"reminder": "Take your medication now."}),
     ]
     for etype, payload in event_defs:
+        if etype == "face_recognized" and not payload.get("person_id"):
+            continue
         event_result = await db.execute(
             select(Event).where(
                 Event.patient_id == patient_id,
@@ -240,10 +271,20 @@ async def seed() -> None:
         await _ensure_caregiver_link(db, patient_id=patient.id, caregiver_id=primary.id, role="PRIMARY")
         await _ensure_caregiver_link(db, patient_id=patient.id, caregiver_id=secondary.id, role="SECONDARY")
 
-        await _seed_people(db, patient_id=patient.id, created_by=primary.id)
+        people_by_name = await _seed_people(db, patient_id=patient.id, created_by=primary.id)
         await _seed_items(db, patient_id=patient.id)
-        await _seed_reminders(db, patient_id=patient.id, created_by=primary.id)
-        await _seed_notes_and_events(db, patient_id=patient.id, created_by=primary.id)
+        await _seed_reminders(
+            db,
+            patient_id=patient.id,
+            created_by=primary.id,
+            people_by_name=people_by_name,
+        )
+        await _seed_notes_and_events(
+            db,
+            patient_id=patient.id,
+            created_by=primary.id,
+            people_by_name=people_by_name,
+        )
 
         await db.commit()
 

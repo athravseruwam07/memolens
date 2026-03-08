@@ -11,8 +11,13 @@ from app.config import (
     SUPABASE_URL,
     SUPABASE_SERVICE_KEY,
     SUPABASE_STORAGE_BUCKET,
+    SUPABASE_STORAGE_REQUIRED,
     LOCAL_UPLOAD_DIR,
 )
+
+
+class StorageError(RuntimeError):
+    pass
 
 
 def _safe_suffix(filename: str | None) -> str:
@@ -27,9 +32,9 @@ def _public_url_for_object(object_path: str) -> str:
     return f"{SUPABASE_URL}/storage/v1/object/public/{SUPABASE_STORAGE_BUCKET}/{encoded_path}"
 
 
-async def _upload_to_supabase(object_path: str, content: bytes, content_type: str) -> str | None:
+async def _upload_to_supabase(object_path: str, content: bytes, content_type: str) -> str:
     if not SUPABASE_URL or not SUPABASE_SERVICE_KEY:
-        return None
+        raise StorageError("Supabase storage is not configured (SUPABASE_URL / SUPABASE_SERVICE_KEY)")
 
     url = f"{SUPABASE_URL}/storage/v1/object/{SUPABASE_STORAGE_BUCKET}/{object_path}"
     headers = {
@@ -39,10 +44,15 @@ async def _upload_to_supabase(object_path: str, content: bytes, content_type: st
         "content-type": content_type,
     }
     async with httpx.AsyncClient(timeout=20.0) as client:
-        res = await client.post(url, headers=headers, content=content)
+        try:
+            res = await client.post(url, headers=headers, content=content)
+        except Exception as exc:
+            raise StorageError(f"Supabase upload failed: {exc}") from exc
     if 200 <= res.status_code < 300:
         return _public_url_for_object(object_path)
-    return None
+    raise StorageError(
+        f"Supabase upload failed with status {res.status_code}: {res.text[:200]}"
+    )
 
 
 def _store_locally(object_path: str, content: bytes) -> str:
@@ -64,11 +74,12 @@ async def upload_person_photo(
     object_path = f"patients/{patient_id}/people/{person_id}/{uuid.uuid4().hex}{suffix}"
     content_type = mimetypes.guess_type(f"file{suffix}")[0] or "application/octet-stream"
 
-    supabase_url = await _upload_to_supabase(object_path=object_path, content=content, content_type=content_type)
-    if supabase_url:
-        return supabase_url
-
-    return _store_locally(object_path=object_path, content=content)
+    try:
+        return await _upload_to_supabase(object_path=object_path, content=content, content_type=content_type)
+    except StorageError:
+        if not SUPABASE_STORAGE_REQUIRED:
+            return _store_locally(object_path=object_path, content=content)
+        raise
 
 
 async def upload_item_snapshot(
@@ -81,8 +92,9 @@ async def upload_item_snapshot(
     object_path = f"patients/{patient_id}/items/{safe_item}/{uuid.uuid4().hex}.jpg"
     content_type = "image/jpeg"
 
-    supabase_url = await _upload_to_supabase(object_path=object_path, content=content, content_type=content_type)
-    if supabase_url:
-        return supabase_url
-
-    return _store_locally(object_path=object_path, content=content)
+    try:
+        return await _upload_to_supabase(object_path=object_path, content=content, content_type=content_type)
+    except StorageError:
+        if not SUPABASE_STORAGE_REQUIRED:
+            return _store_locally(object_path=object_path, content=content)
+        raise

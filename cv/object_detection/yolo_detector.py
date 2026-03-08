@@ -16,9 +16,15 @@ def detect_items(image_path: str, tracked_items: set[str]) -> list[dict]:
         return []
 
     map_labels = {
+        "mouse": "computer mouse",
         "cell phone": "phone",
+        "wallet": "wallet",
+        "keys": "keys",
+        "laptop": "laptop",
+        "shoe": "shoes",
+        "eyeglasses": "glasses",
         "remote": "remote",
-        "bottle": "medication",
+        "medicine bottle": "medication",
         "book": "book"
     }
 

@@ -1,15 +1,37 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 
 YOLO_LABEL_MAP = {
+    "mouse": "computer mouse",
+    "computer mouse": "computer mouse",
     "cell phone": "phone",
     "mobile phone": "phone",
+    "wallet": "wallet",
+    "purse": "wallet",
+    "handbag": "wallet",
+    "keys": "keys",
     "eyeglasses": "glasses",
+    "glasses": "glasses",
+    "laptop": "laptop",
+    "tv remote": "remote",
     "remote control": "remote",
+    "shoe": "shoes",
+    "sneaker": "shoes",
+    "boot": "shoes",
+    "sandals": "shoes",
+    "keychain": "keys",
+    "house keys": "keys",
+    "medicine": "medication",
+    "medication": "medication",
+    "pill bottle": "medication",
     "medicine bottle": "medication",
 }
+ROOM_KEYS = ("room", "room_label", "location")
+ITEM_WRITE_COOLDOWN_SECONDS = 30
+MIN_CONFIDENCE_DELTA = 0.05
 
 _YOLO_MODEL = None
 _YOLO_INIT_ATTEMPTED = False
@@ -24,6 +46,13 @@ def _normalize_item_name(name: str | None) -> str | None:
 
 def _tracked_set(tracked_items: list[str] | None) -> set[str]:
     return {_normalize_item_name(i) for i in (tracked_items or []) if _normalize_item_name(i)}
+
+
+def _normalize_room_name(name: str | None) -> str | None:
+    if not name:
+        return None
+    normalized = name.strip().lower()
+    return normalized or None
 
 
 def _load_yolo_model():
@@ -122,7 +151,7 @@ def extract_item_detections(
         if tracked and item_name not in tracked:
             continue
 
-        room = d.get("room") or d.get("room_label") or d.get("location")
+        room = _normalize_room_name(d.get("room") or d.get("room_label") or d.get("location"))
         confidence = d.get("confidence")
         try:
             confidence = float(confidence) if confidence is not None else None
@@ -138,6 +167,66 @@ def extract_item_detections(
         )
 
     return out
+
+
+def resolve_item_room(
+    detection: dict[str, Any],
+    payload: dict[str, Any] | None,
+) -> str | None:
+    """
+    Resolve room with precedence:
+    1) detection-level room keys
+    2) payload-level room keys
+    3) None
+    """
+    for source in (detection, payload or {}):
+        for key in ROOM_KEYS:
+            room = _normalize_room_name(source.get(key))
+            if room:
+                return room
+    return None
+
+
+def should_write_item_update(
+    state: Any | None,
+    *,
+    resolved_room: str | None,
+    confidence: float | None,
+    now: datetime,
+    cooldown_seconds: int = ITEM_WRITE_COOLDOWN_SECONDS,
+    min_confidence_delta: float = MIN_CONFIDENCE_DELTA,
+) -> bool:
+    """
+    Gate item writes and events to avoid per-frame churn.
+    """
+    if state is None:
+        return True
+
+    state_room = _normalize_room_name(getattr(state, "last_seen_room", None))
+    if resolved_room != state_room:
+        return True
+
+    state_confidence = getattr(state, "confidence", None)
+    if confidence is not None:
+        if state_confidence is None:
+            return True
+        try:
+            if confidence >= float(state_confidence) + float(min_confidence_delta):
+                return True
+        except (TypeError, ValueError):
+            return True
+
+    if not getattr(state, "snapshot_url", None):
+        return True
+
+    last_seen_at = getattr(state, "last_seen_at", None)
+    if last_seen_at is None:
+        return True
+
+    try:
+        return (now - last_seen_at).total_seconds() >= cooldown_seconds
+    except Exception:
+        return True
 
 
 def merge_detections(*detection_sets: list[dict[str, Any]]) -> list[dict[str, Any]]:

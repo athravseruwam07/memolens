@@ -47,7 +47,11 @@ def _real_generate_embedding(image_bytes: bytes) -> list[float] | None:
     img_pil = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img_array = np.array(img_pil)
 
-    face_locations = _fr.face_locations(img_array, model="hog")
+    face_locations = _fr.face_locations(
+        img_array,
+        number_of_times_to_upsample=0,
+        model="hog",
+    )
     if not face_locations:
         return None
 

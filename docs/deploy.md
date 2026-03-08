@@ -25,6 +25,7 @@ Services:
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_KEY`
    - `SUPABASE_STORAGE_BUCKET`
+   - `SUPABASE_STORAGE_REQUIRED=true`
 3. Ensure startup command runs migrations (included in Dockerfile).
 4. Verify `GET /health` is healthy.
 

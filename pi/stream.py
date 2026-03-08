@@ -9,11 +9,15 @@ BACKEND_WS_URL = os.environ.get(
     "BACKEND_WS_URL",
     "ws://localhost:8000/ws/stream/test-patient-id"
 )
+FRAME_INTERVAL = 2
+JPEG_QUALITY = 55
+FRAME_WIDTH = 320
+FRAME_HEIGHT = 240
 
 async def stream():
     cap = cv2.VideoCapture(0)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
 
     if not cap.isOpened():
         print("ERROR: Could not open camera at /dev/video0")
@@ -29,12 +33,12 @@ async def stream():
                     continue
 
                 frame_count += 1
-                if frame_count % 3 != 0:
+                if frame_count % FRAME_INTERVAL != 0:
                     continue
 
                 _, buf = cv2.imencode(
                     ".jpg", frame,
-                    [cv2.IMWRITE_JPEG_QUALITY, 70]
+                    [cv2.IMWRITE_JPEG_QUALITY, JPEG_QUALITY]
                 )
                 encoded = base64.b64encode(buf).decode("utf-8")
                 await ws.send(encoded)

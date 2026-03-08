@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from app.config import FRONTEND_URL, FRONTEND_URLS, LOCAL_UPLOAD_DIR
+from app.config import FRONTEND_URL, FRONTEND_URLS, LOCAL_UPLOAD_DIR, SUPABASE_STORAGE_REQUIRED
 from app.api import auth, patients, people, events, items, reminders, notes, query, websocket
 
 app = FastAPI(title="MemoLens API", version="1.0.0")
@@ -35,9 +35,10 @@ app.include_router(query.router, prefix=prefix)
 # WebSocket (no prefix — mounted at root)
 app.include_router(websocket.router)
 
-# Local upload fallback serving (/uploads/*)
-Path(LOCAL_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=LOCAL_UPLOAD_DIR), name="uploads")
+# Local upload fallback serving (/uploads/*) when explicitly enabled.
+if not SUPABASE_STORAGE_REQUIRED:
+    Path(LOCAL_UPLOAD_DIR).mkdir(parents=True, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=LOCAL_UPLOAD_DIR), name="uploads")
 
 
 @app.get("/health")

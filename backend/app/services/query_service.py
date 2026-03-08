@@ -15,7 +15,20 @@ async def process_query(db: AsyncSession, patient_id: UUID, question: str) -> di
     q = question.lower()
 
     # Item lookup: keys, phone, wallet, etc.
-    item_keywords = ["keys", "phone", "wallet", "glasses", "remote", "medication", "medicine", "pills"]
+    item_keywords = [
+        "keys",
+        "phone",
+        "wallet",
+        "computer mouse",
+        "mouse",
+        "laptop",
+        "shoes",
+        "glasses",
+        "remote",
+        "medication",
+        "medicine",
+        "pills",
+    ]
     matched_items = [kw for kw in item_keywords if kw in q]
 
     if matched_items or "where" in q:

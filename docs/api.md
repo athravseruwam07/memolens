@@ -217,6 +217,14 @@ Server -> Client message types:
 { "type": "no_match" }
 ```
 
+Item detection behavior notes:
+- The backend may combine Pi-provided detections with backend YOLO detections.
+- Item room resolution precedence is:
+  1. detection-level `room` / `room_label` / `location`
+  2. top-level payload `room` / `room_label` / `location`
+  3. `null`
+- `item_states` and `item_seen` are written on meaningful changes (room change, confidence improvement, missing snapshot) or after cooldown; they are not guaranteed to write on every frame.
+
 ## Caregiver Live Event WebSocket
 
 ### `ws://<host>/ws/events/{patient_id}?token=<jwt>`

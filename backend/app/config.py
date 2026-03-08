@@ -7,6 +7,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:password
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
 SUPABASE_STORAGE_BUCKET = os.getenv("SUPABASE_STORAGE_BUCKET", "memolens")
+SUPABASE_STORAGE_REQUIRED = os.getenv("SUPABASE_STORAGE_REQUIRED", "true").strip().lower() in {"1", "true", "yes", "on"}
 LOCAL_UPLOAD_DIR = os.getenv("LOCAL_UPLOAD_DIR", "uploads")
 INVITE_EXPIRE_HOURS = int(os.getenv("INVITE_EXPIRE_HOURS", "72"))
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-key")

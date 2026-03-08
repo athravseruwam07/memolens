@@ -12,7 +12,7 @@ from app.models.schemas import (
     FamiliarPersonCreate, FamiliarPersonUpdate, FamiliarPersonOut, APIResponse,
 )
 from app.services.face_service import generate_face_embedding
-from app.services.storage_service import upload_person_photo
+from app.services.storage_service import StorageError, upload_person_photo
 
 router = APIRouter(prefix="/patients/{patient_id}/people", tags=["people"])
 
@@ -65,12 +65,15 @@ async def create_person(
         encoded_photos.append((photo.filename or "photo.jpg", content, embedding))
 
     for filename, content, embedding in encoded_photos:
-        photo_url = await upload_person_photo(
-            patient_id=str(patient_id),
-            person_id=str(person_id),
-            filename=filename,
-            content=content,
-        )
+        try:
+            photo_url = await upload_person_photo(
+                patient_id=str(patient_id),
+                person_id=str(person_id),
+                filename=filename,
+                content=content,
+            )
+        except StorageError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         photo_urls.append(photo_url)
         embeddings.append(embedding)
 
@@ -175,12 +178,15 @@ async def upload_photos(
         encoded_photos.append((photo.filename or "photo.jpg", content, embedding))
 
     for filename, content, embedding in encoded_photos:
-        photo_url = await upload_person_photo(
-            patient_id=str(patient_id),
-            person_id=str(pid),
-            filename=filename,
-            content=content,
-        )
+        try:
+            photo_url = await upload_person_photo(
+                patient_id=str(patient_id),
+                person_id=str(pid),
+                filename=filename,
+                content=content,
+            )
+        except StorageError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         existing_photos.append(photo_url)
         existing_embeddings.append(embedding)
 

@@ -16,8 +16,10 @@ TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJmYzVjM2Q0Mi1mZWEzLTQzZj
 PATIENT_ID = "8746fe0d-6194-469f-a495-7629421baca2"
 WS_URL = f"ws://localhost:8000/ws/stream/{PATIENT_ID}?token={TOKEN}"
 
-FRAME_INTERVAL = 3  # send every Nth frame
-JPEG_QUALITY = 70
+FRAME_INTERVAL = 2  # send every Nth frame
+JPEG_QUALITY = 55
+FRAME_WIDTH = 320
+FRAME_HEIGHT = 240
 
 
 async def stream():
@@ -26,8 +28,8 @@ async def stream():
         print("ERROR: Cannot open webcam")
         return
 
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, FRAME_WIDTH)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, FRAME_HEIGHT)
     print("Webcam opened. Streaming to backend... (Ctrl+C to stop)")
 
     async with websockets.connect(WS_URL) as ws:
